@@ -1,0 +1,46 @@
+name: Run Migrations
+on: [push]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build and Push Docker image
+      run: |
+        $(aws ecr get-login --no-include-email --region us-west-2)
+        docker build -t my-migrations .
+        docker tag my-migrations:latest <my-ecr-repo>:${{ github.sha }}_${{ github.event.timestamp }}
+        docker push <my-ecr-repo>:${{ github.sha }}_${{ github.event.timestamp }}
+    - name: Run Migrations in ECS
+      run: |
+        aws ecs run-task --cluster my-cluster --task-definition my-migrations-task-definition --overrides '{"containerOverrides": [{"name": "my-migrations-container", "image": "<my-ecr-repo>:${{ github.sha }}_${{ github.event.timestamp }}"}]}'
+
+    - name: Run Migrations in ECS
+      run: |
+        aws ecs run-task --cluster my-cluster --task-definition my-migrations-task-definition \
+        --overrides '{
+          "containerOverrides": [
+            {
+              "name": "my-migrations-container",
+              "environment": [
+                {
+                  "name": "DB_NAME",
+                  "value": "${{ secrets.DB_NAME }}"
+                },
+                {
+                  "name": "DB_USER",
+                  "value": "${{ secrets.DB_USER }}"
+                },
+                {
+                  "name": "DB_PSW",
+                  "value": "${{ secrets.DB_PSW }}"
+                },
+                {
+                  "name": "MIGRATIONS_VERSION",
+                  "value": "${{ github.event.inputs.MIGRATIONS_VERSION }}"
+                }
+              ],
+              "image": "<my-ecr-repo>:${{ github.sha }}_${{ github.event.timestamp }}"
+            }
+          ]
+        }'
